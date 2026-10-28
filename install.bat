@@ -24,13 +24,33 @@ goto pull_model
 :install_ollama
 echo [INFO] Downloading the official Ollama installer...
 set "OLLAMA_EXE=%TEMP%\OllamaSetup.exe"
-powershell -NoProfile -Command "$ErrorActionPreference = 'Stop'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://ollama.com/download/OllamaSetup.exe' -OutFile (Join-Path $env:TEMP 'OllamaSetup.exe')"
+del /f /q "%OLLAMA_EXE%" >nul 2>nul
+where curl.exe >nul 2>nul
+if errorlevel 1 goto powershell_download_ollama
+curl.exe --fail --location --retry 3 --retry-delay 2 --retry-connrefused --connect-timeout 30 --output "%OLLAMA_EXE%" "https://ollama.com/download/OllamaSetup.exe"
+if errorlevel 1 (
+    echo [WARN] curl could not download Ollama. Trying PowerShell...
+    del /f /q "%OLLAMA_EXE%" >nul 2>nul
+    goto powershell_download_ollama
+)
+goto verify_ollama_download
+
+:powershell_download_ollama
+powershell -NoProfile -Command "try { $ErrorActionPreference = 'Stop'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://ollama.com/download/OllamaSetup.exe' -OutFile $env:OLLAMA_EXE } catch { Write-Error ('Ollama installer download failed: ' + $_.Exception.Message); exit 1 }"
 if errorlevel 1 (
     echo [ERROR] Could not download the Ollama installer.
+    echo Check your internet connection, proxy or firewall settings, then rerun the installer.
     goto install_failed
 )
+
+:verify_ollama_download
 if not exist "%OLLAMA_EXE%" (
     echo [ERROR] The Ollama installer was not downloaded.
+    goto install_failed
+)
+for %%I in ("%OLLAMA_EXE%") do if %%~zI equ 0 (
+    echo [ERROR] The downloaded Ollama installer is empty.
+    del /f /q "%OLLAMA_EXE%" >nul 2>nul
     goto install_failed
 )
 
